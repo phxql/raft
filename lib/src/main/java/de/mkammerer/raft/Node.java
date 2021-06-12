@@ -135,6 +135,30 @@ public class Node {
         // if command received from client: append entry to local log,respond after entry applied to state machine
         persistentState.getLog().append(new Log.Entry(command, persistentState.getCurrentTerm()));
 
+        replicateLogToNodes();
+
+        checkLogReplication();
+    }
+
+    private void checkLogReplication() {
+        // If there exists an N such that N > commitIndex, a majority of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N
+        for (long n = volatileState.getCommitIndex() + 1; n <= persistentState.getLog().getLastIndex(); n++) {
+            int replicated = 1; // We have this data already
+            for (NodeId otherNode : otherNodes) {
+                long matchIndex = leaderState.getMatchIndex().get(otherNode);
+                if (matchIndex >= n) {
+                    replicated++;
+                }
+            }
+
+            if (replicated >= majority && persistentState.getLog().getTermAt(n) == persistentState.getCurrentTerm()) {
+                volatileState.setCommitIndex(n);
+                commitLog();
+            }
+        }
+    }
+
+    private void replicateLogToNodes() {
         long lastIndex = persistentState.getLog().getLastIndex();
 
         // if last log index ≥ nextIndex for a follower: sendAppendEntries RPC with log entries starting at nextIndex
@@ -170,22 +194,6 @@ public class Node {
                         nextIndex--;
                     }
                 }
-            }
-        }
-
-        // If there exists an N such that N > commitIndex, a majority of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N
-        for (long n = volatileState.getCommitIndex() + 1; n <= persistentState.getLog().getLastIndex(); n++) {
-            int replicated = 1; // We have this data already
-            for (NodeId otherNode : otherNodes) {
-                long matchIndex = leaderState.getMatchIndex().get(otherNode);
-                if (matchIndex >= n) {
-                    replicated++;
-                }
-            }
-
-            if (replicated >= majority && persistentState.getLog().getTermAt(n) == persistentState.getCurrentTerm()) {
-                volatileState.setCommitIndex(n);
-                commitLog();
             }
         }
     }
