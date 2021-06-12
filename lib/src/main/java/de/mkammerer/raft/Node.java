@@ -127,7 +127,7 @@ public class Node {
         convertToFollower();
     }
 
-    public void send(String command) {
+    public synchronized void send(String command) {
         if (volatileState.getRole() != VolatileState.Role.LEADER) {
             throw new IllegalStateException("Can only send commands to leader");
         }
