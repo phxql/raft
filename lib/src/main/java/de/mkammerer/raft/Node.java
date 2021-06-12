@@ -86,6 +86,7 @@ public class Node {
         // Check for heartbeat
         if (rpc.getPrevLogIndex() == 0 && rpc.getPrevLogTerm() == 0 && rpc.getEntries().isEmpty()) {
             log.trace("[{}] Received heartbeat", nodeId);
+            receivedHeartBeat();
             return AppendEntriesRpc.Result.ok(persistentState.getCurrentTerm());
         }
 
@@ -122,8 +123,8 @@ public class Node {
         this.rpcSender = rpcSender;
 
         majority = ((otherNodes.size() + 1) / 2) + 1;
-        Duration electionTimeout = random.getElectionTimeout();
-        scheduler.schedule(new LoggingRunnable(() -> this.checkHeartBeat(electionTimeout)), electionTimeout.toMillis(), TimeUnit.MILLISECONDS);
+
+        convertToFollower();
     }
 
     public void send(String command) {
@@ -228,6 +229,10 @@ public class Node {
         log.info("[{}] Converting to follower", nodeId);
         volatileState.setRole(VolatileState.Role.FOLLOWER);
         leaderState = null;
+
+        Duration electionTimeout = random.getElectionTimeout();
+        // if election timeout elapses without receiving AppendEntriesRPC from current leader or granting vote to candidate
+        scheduler.schedule(new LoggingRunnable(() -> this.checkHeartBeat(electionTimeout)), electionTimeout.toMillis(), TimeUnit.MILLISECONDS);
     }
 
     private void startElection() {
@@ -304,7 +309,7 @@ public class Node {
             rpcSender.sendAppendEntriesRpc(otherNode, new AppendEntriesRpc(persistentState.getCurrentTerm(), nodeId, 0, 0, List.of(), volatileState.getCommitIndex()));
         }
 
-        scheduler.schedule(new LoggingRunnable(this::sendHeartbeat), Duration.ofMillis(100).toMillis(), TimeUnit.MILLISECONDS);
+        scheduler.schedule(new LoggingRunnable(this::sendHeartbeat), random.getHeartBeat().toMillis(), TimeUnit.MILLISECONDS);
     }
 
     public boolean isLeader() {
